@@ -13,31 +13,6 @@ A production-ready, self-hosted Docker registry with automatic HTTPS using Caddy
 - 🛡️ **Security Headers** - HSTS, XSS protection, and more
 - ⚡ **HTTP/3** - Modern protocol support via QUIC
 
-## Project Structure
-
-```
-.
-├── compose.yml                    # Docker Compose configuration
-├── Caddyfile                      # Caddy reverse proxy config
-├── .env.example                   # Environment variables template (local development)
-├── .gitignore                     # Git ignore rules
-├── Makefile                       # Make commands for easy management
-├── setup.sh                       # Interactive setup script
-├── README.md                      # Main documentation
-├── GITHUB_SECRETS.md             # GitHub Actions secrets guide
-├── .github/
-│   └── workflows/
-│       └── deploy.yml             # CI/CD deployment workflow
-├── registry/                      # Registry data (created during setup)
-│   └── .gitkeep
-└── scripts/                       # Helper scripts
-    ├── backup.sh                  # Backup registry data
-    ├── gc.sh                      # Garbage collection
-    ├── generate-secrets.sh        # Generate GitHub secrets
-    ├── logs.sh                    # View logs
-    └── status.sh                  # Check status
-```
-
 ## Prerequisites
 
 - Docker Engine 20.10+
