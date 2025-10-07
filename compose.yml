@@ -1,0 +1,117 @@
+services:
+    registry:
+        image: registry:2.8
+        container_name: docker-registry
+        restart: unless-stopped
+        environment:
+            # Authentication
+            REGISTRY_AUTH: htpasswd
+            REGISTRY_AUTH_HTPASSWD_REALM: Registry Realm
+            REGISTRY_AUTH_HTPASSWD_PATH: /auth/registry.password
+
+            # Storage Configuration
+            REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY: ${REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY:-/data}
+            REGISTRY_STORAGE_DELETE_ENABLED: ${REGISTRY_STORAGE_DELETE_ENABLED:-true}
+            REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR: ${REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR:-inmemory}
+
+            # HTTP Configuration
+            REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+            REGISTRY_HTTP_SECRET: ${REGISTRY_HTTP_SECRET}
+            REGISTRY_HTTP_HOST: https://${REGISTRY_DOMAIN}
+            REGISTRY_HTTP_RELATIVEURLS: "false"
+
+            # Performance & Limits
+            REGISTRY_HTTP_MAXCONCURRENTUPLOADS: ${REGISTRY_HTTP_MAXCONCURRENTUPLOADS:-5}
+            REGISTRY_HTTP_TIMEOUT_READ: ${REGISTRY_HTTP_TIMEOUT_READ:-5m}
+            REGISTRY_HTTP_TIMEOUT_WRITE: ${REGISTRY_HTTP_TIMEOUT_WRITE:-10m}
+
+            # Health Check
+            REGISTRY_HEALTH_STORAGEDRIVER_ENABLED: ${REGISTRY_HEALTH_STORAGEDRIVER_ENABLED:-true}
+            REGISTRY_HEALTH_STORAGEDRIVER_INTERVAL: ${REGISTRY_HEALTH_STORAGEDRIVER_INTERVAL:-10s}
+            REGISTRY_HEALTH_STORAGEDRIVER_THRESHOLD: ${REGISTRY_HEALTH_STORAGEDRIVER_THRESHOLD:-3}
+
+            # Logging
+            REGISTRY_LOG_LEVEL: ${REGISTRY_LOG_LEVEL:-info}
+            REGISTRY_LOG_FORMATTER: json
+            REGISTRY_LOG_FIELDS_SERVICE: registry
+            REGISTRY_LOG_FIELDS_ENVIRONMENT: production
+        volumes:
+            - ./registry/registry.password:/auth/registry.password:ro
+            - registry_data:/data
+        networks:
+            - registry_network
+        healthcheck:
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5000/v2/"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 40s
+        logging:
+            driver: "json-file"
+            options:
+                max-size: "10m"
+                max-file: "3"
+        deploy:
+            resources:
+                limits:
+                    cpus: '2'
+                    memory: 1G
+                reservations:
+                    cpus: '0.5'
+                    memory: 256M
+
+    caddy:
+        image: caddy:2.8-alpine
+        container_name: caddy-proxy
+        restart: unless-stopped
+        depends_on:
+            registry:
+                condition: service_healthy
+        environment:
+            REGISTRY_DOMAIN: ${REGISTRY_DOMAIN}
+            ACME_EMAIL: ${ACME_EMAIL}
+        volumes:
+            - ./Caddyfile:/etc/caddy/Caddyfile:ro
+            - caddy_data:/data
+            - caddy_config:/config
+        ports:
+            - "80:80"
+            - "443:443"
+            - "443:443/udp"  # HTTP/3
+        networks:
+            - registry_network
+        healthcheck:
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:2019/metrics"]
+            interval: 30s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+        logging:
+            driver: "json-file"
+            options:
+                max-size: "10m"
+                max-file: "3"
+        deploy:
+            resources:
+                limits:
+                    cpus: '1'
+                    memory: 512M
+                reservations:
+                    cpus: '0.25'
+                    memory: 128M
+
+volumes:
+    registry_data:
+        driver: local
+    caddy_data:
+        driver: local
+    caddy_config:
+        driver: local
+
+networks:
+    registry_network:
+        driver: bridge
+        ipam:
+            driver: default
+            config:
+                - subnet: 172.28.0.0/16

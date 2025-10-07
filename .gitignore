@@ -1,0 +1,48 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.backup.*
+
+# Generated secrets files
+github-secrets-*.txt
+
+# Registry data and auth
+registry/
+!registry/.gitkeep
+
+# Backups
+.backup/
+backups/
+
+# Caddy data
+caddy_data/
+caddy_config/
+
+# Docker volumes
+volumes/
+
+# Logs
+*.log
+logs/
+
+# Backup files
+*.backup
+*.bak
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.swn
+
+# Temporary files
+tmp/
+temp/
+*.tmp
