@@ -1,0 +1,162 @@
+name: Deploy Registry
+
+on:
+    push:
+        branches:
+            - main
+    workflow_dispatch:  # Allow manual trigger
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+        environment: production
+
+        steps:
+            - name: Checkout repository
+              uses: actions/checkout@v4
+
+            - name: Prepare deployment directory on server
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                host: ${{ secrets.HOST }}
+                username: ${{ secrets.USERNAME }}
+                password: ${{ secrets.PASSWORD }}
+                port: ${{ secrets.PORT }}
+                timeout: 60s
+                script: |
+                    set -e
+                    echo "=== Preparing deployment directory ==="
+
+                    DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
+
+                    # Create deployment directory and subdirectories
+                    mkdir -p "$DEPLOY_DIR"
+                    mkdir -p "$DEPLOY_DIR/registry"
+
+                    # Backup registry password if it exists
+                    if [ -f "$DEPLOY_DIR/registry/registry.password" ]; then
+                        echo "Backing up registry password..."
+                        mkdir -p "$DEPLOY_DIR/.backup"
+                        cp "$DEPLOY_DIR/registry/registry.password" "$DEPLOY_DIR/.backup/registry.password"
+                    fi
+
+                    echo "Preparation complete"
+
+            - name: Copy files to server
+              uses: appleboy/scp-action@v0.1.7
+              with:
+                host: ${{ secrets.HOST }}
+                username: ${{ secrets.USERNAME }}
+                password: ${{ secrets.PASSWORD }}
+                port: ${{ secrets.PORT }}
+                source: "compose.yml,Caddyfile,.env.example,setup.sh,scripts/*,Makefile,README.md"
+                target: ${{ secrets.DEPLOY_PATH }}
+                strip_components: 0
+                overwrite: true
+
+            - name: Deploy and start services
+              uses: appleboy/ssh-action@v1.0.3
+              with:
+                host: ${{ secrets.HOST }}
+                username: ${{ secrets.USERNAME }}
+                password: ${{ secrets.PASSWORD }}
+                port: ${{ secrets.PORT }}
+                timeout: 60s
+                command_timeout: 30m
+                script: |
+                    set -e
+
+                    echo "=== Starting deployment ==="
+
+                    # Define deployment directory
+                    DEPLOY_DIR="${{ secrets.DEPLOY_PATH }}"
+                    cd "$DEPLOY_DIR"
+
+                    # Make scripts executable
+                    chmod +x setup.sh scripts/*.sh 2>/dev/null || true
+
+                    # Export environment variables from GitHub secrets
+                    export REGISTRY_DOMAIN="${{ secrets.REGISTRY_DOMAIN }}"
+                    export CADDY_SERVER_SERVER_NAME="${{ secrets.REGISTRY_DOMAIN }}"
+                    export ACME_EMAIL="${{ secrets.ACME_EMAIL }}"
+                    export REGISTRY_HTTP_SECRET="${{ secrets.REGISTRY_HTTP_SECRET }}"
+                    export REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY="${{ secrets.REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY }}"
+                    export REGISTRY_STORAGE_DELETE_ENABLED="${{ secrets.REGISTRY_STORAGE_DELETE_ENABLED }}"
+                    export REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR="${{ secrets.REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR }}"
+                    export REGISTRY_LOG_LEVEL="${{ secrets.REGISTRY_LOG_LEVEL }}"
+                    export REGISTRY_HTTP_MAXCONCURRENTUPLOADS="${{ secrets.REGISTRY_HTTP_MAXCONCURRENTUPLOADS }}"
+                    export REGISTRY_HTTP_TIMEOUT_READ="${{ secrets.REGISTRY_HTTP_TIMEOUT_READ }}"
+                    export REGISTRY_HTTP_TIMEOUT_WRITE="${{ secrets.REGISTRY_HTTP_TIMEOUT_WRITE }}"
+                    export REGISTRY_HEALTH_STORAGEDRIVER_ENABLED="${{ secrets.REGISTRY_HEALTH_STORAGEDRIVER_ENABLED }}"
+                    export REGISTRY_HEALTH_STORAGEDRIVER_INTERVAL="${{ secrets.REGISTRY_HEALTH_STORAGEDRIVER_INTERVAL }}"
+                    export REGISTRY_HEALTH_STORAGEDRIVER_THRESHOLD="${{ secrets.REGISTRY_HEALTH_STORAGEDRIVER_THRESHOLD }}"
+
+                    echo "Environment variables configured"
+
+                    # Create registry directory for password file
+                    mkdir -p registry
+
+                    # Restore registry password from backup if it doesn't exist
+                    if [ ! -f registry/registry.password ] && [ -f .backup/registry.password ]; then
+                        echo "Restoring registry password from backup..."
+                        cp .backup/registry.password registry/registry.password
+                    fi
+
+                    # Check if registry password file exists
+                    if [ ! -f registry/registry.password ]; then
+                        echo "WARNING: registry/registry.password not found!"
+                        echo "Please create it using: htpasswd -Bbn username password > registry/registry.password"
+                        echo "Or run: ./setup.sh"
+                        exit 1
+                    fi
+
+                    # Pull latest images
+                    echo "Pulling latest Docker images..."
+                    docker compose pull
+
+                    # Stop and remove old containers
+                    echo "Stopping old containers..."
+                    docker compose down || true
+
+                    # Start services
+                    echo "Starting services..."
+                    docker compose up -d
+
+                    # Wait for services to be healthy
+                    echo "Waiting for services to be healthy..."
+                    sleep 10
+
+                    # Check service status
+                    echo "Checking service status..."
+                    docker compose ps
+
+                    # Verify registry is responding
+                    echo "Verifying registry health..."
+                    for i in {1..30}; do
+                        if docker compose exec -T registry wget --quiet --tries=1 --spider http://localhost:5000/v2/; then
+                            echo "Registry is healthy!"
+                            break
+                        fi
+                        if [ $i -eq 30 ]; then
+                            echo "ERROR: Registry failed to become healthy"
+                            docker compose logs registry
+                            exit 1
+                        fi
+                        echo "Waiting for registry... ($i/30)"
+                        sleep 2
+                    done
+
+                    # Clean up old images
+                    echo "Cleaning up old Docker images..."
+                    docker image prune -f
+
+                    echo "=== Deployment completed successfully ==="
+
+            - name: Deployment notification
+              if: always()
+              run: |
+                if [ "${{ job.status }}" == "success" ]; then
+                    echo "✅ Deployment successful!"
+                else
+                    echo "❌ Deployment failed!"
+                fi

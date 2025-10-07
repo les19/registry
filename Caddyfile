@@ -1,0 +1,85 @@
+# Global options
+{
+    # Enable admin API for health checks
+    admin 0.0.0.0:2019
+
+    # Email for Let's Encrypt
+    email {$ACME_EMAIL}
+
+    # Enable logging
+    log {
+        output stdout
+        format json
+        level INFO
+    }
+}
+
+# Docker Registry
+{$REGISTRY_DOMAIN} {
+    # Enable logging for this site
+    log {
+        output stdout
+        format json
+    }
+
+    # Enable gzip compression
+    encode gzip
+
+    # Reverse proxy to registry service
+    reverse_proxy docker-registry:5000 {
+        # Required headers for Docker Registry V2 API
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+        header_up X-Forwarded-Host {host}
+
+        # Health check
+        health_uri /v2/
+        health_interval 30s
+        health_timeout 10s
+        health_status 2xx
+
+        # Timeouts for large image pushes/pulls
+        transport http {
+            read_timeout 10m
+            write_timeout 10m
+            dial_timeout 30s
+        }
+    }
+
+    # Security headers
+    header {
+        # Enable HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # Prevent MIME type sniffing
+        X-Content-Type-Options "nosniff"
+
+        # Prevent clickjacking
+        X-Frame-Options "DENY"
+
+        # Enable XSS protection
+        X-XSS-Protection "1; mode=block"
+
+        # Remove Server header
+        -Server
+
+        # Add custom header
+        X-Docker-Registry "v2"
+    }
+
+    # Rate limiting (optional - adjust as needed)
+    # rate_limit {
+    #     zone docker_registry {
+    #         key {remote_host}
+    #         events 100
+    #         window 1m
+    #     }
+    # }
+
+    # Handle errors
+    handle_errors {
+        respond "{err.status_code} {err.status_text}"
+    }
+}
