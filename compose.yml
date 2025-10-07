@@ -41,7 +41,7 @@ services:
         networks:
             - registry_network
         healthcheck:
-            test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:5000/v2/ 2>&1; [ $$? -eq 0 ] || [ $$? -eq 8 ]"]
+            test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:5000/"]
             interval: 30s
             timeout: 10s
             retries: 3
