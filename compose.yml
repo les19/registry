@@ -51,14 +51,6 @@ services:
             options:
                 max-size: "10m"
                 max-file: "3"
-        deploy:
-            resources:
-                limits:
-                    cpus: '2'
-                    memory: 1G
-                reservations:
-                    cpus: '0.5'
-                    memory: 256M
 
     caddy:
         image: caddy:2.8-alpine
@@ -91,14 +83,6 @@ services:
             options:
                 max-size: "10m"
                 max-file: "3"
-        deploy:
-            resources:
-                limits:
-                    cpus: '1'
-                    memory: 512M
-                reservations:
-                    cpus: '0.25'
-                    memory: 128M
 
 volumes:
     registry_data:
