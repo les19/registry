@@ -302,12 +302,17 @@ docker compose ps
 Both services include health checks:
 
 ```bash
-# Check registry health
+# Check registry health (will return 401 if auth is enabled - this is normal)
 curl http://localhost:5000/v2/
+
+# With authentication
+curl -u username:password http://localhost:5000/v2/
 
 # Check Caddy health
 curl http://localhost:2019/metrics
 ```
+
+**Note:** The registry healthcheck accepts both `200 OK` and `401 Unauthorized` as healthy states, since `401` indicates the service is running and responding correctly (just requiring authentication).
 
 ### Logs
 

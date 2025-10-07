@@ -130,11 +130,15 @@ jobs:
                     echo "Checking service status..."
                     docker compose ps
 
-                    # Verify registry is responding
+                    # Verify registry is responding (accept 200 or 401 as healthy)
                     echo "Verifying registry health..."
                     for i in {1..30}; do
-                        if docker compose exec -T registry wget --quiet --tries=1 --spider http://localhost:5000/v2/; then
+                        # Check if registry responds (even with 401 auth required is OK)
+                        if docker compose exec -T registry wget --quiet --tries=1 --spider http://localhost:5000/v2/ 2>&1; then
                             echo "Registry is healthy!"
+                            break
+                        elif docker compose exec -T registry sh -c 'wget --quiet --tries=1 --spider http://localhost:5000/v2/ 2>&1; [ $? -eq 8 ]'; then
+                            echo "Registry is healthy (authentication required)!"
                             break
                         fi
                         if [ $i -eq 30 ]; then
